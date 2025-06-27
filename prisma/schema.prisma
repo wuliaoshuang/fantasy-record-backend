@@ -1,0 +1,91 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  email     String   @unique
+  password  String
+  settings  Json?    @default("{}")
+  createdAt DateTime @default(now())
+  
+  // Relations
+  records     FantasyRecord[]
+  tags        Tag[]
+  attachments Attachment[]
+  
+  @@map("users")
+}
+
+model FantasyRecord {
+  id          String   @id @default(uuid())
+  title       String
+  content     String   @db.Text
+  snippet     String   @db.VarChar(120)
+  tags        Json     @default("[]")
+  mood        String
+  attachments Json     @default("[]")
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachmentFiles Attachment[]
+  
+  @@map("fantasy_records")
+}
+
+model Tag {
+  id        String   @id @default(uuid())
+  name      String   @db.VarChar(50) // 进一步限制标签名长度
+  color     String?  @db.VarChar(20)  // 标签颜色
+  userId    String
+  createdAt DateTime @default(now())
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([name, userId]) // 同一用户下标签名唯一
+  @@map("tags")
+}
+
+model Attachment {
+  id       String  @id @default(uuid())
+  url      String  @db.VarChar(500) // 文件访问URL
+  fileName String  @db.VarChar(255) // 原始文件名
+  fileType String  @db.VarChar(100) // MIME类型
+  fileSize Int?    // 文件大小(字节)
+  userId   String
+  recordId String?
+  createdAt DateTime @default(now())
+  
+  // Relations
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  record   FantasyRecord? @relation(fields: [recordId], references: [id], onDelete: SetNull)
+  
+  @@map("attachments")
+}
+
+model MoodAnalysis {
+  id          String   @id @default(uuid())
+  userId      String
+  date        DateTime @db.Date
+  moodScore   Float    // 心情分数 1-10
+  moodText    String   @db.VarChar(500) // 心情文本描述
+  recordCount Int      @default(0) // 当天记录数量
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([userId, date]) // 每个用户每天只有一条分析记录
+  @@map("mood_analyses")
+}
