@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # MySQL 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: fantasy-mysql-prod
+    restart: unless-stopped
+    user: "1001:1001"
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+      MYSQL_DATABASE: fantasy_record
+      MYSQL_USER: fantasy_user
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - fantasy-network
+    secrets:
+      - mysql_root_password
+      - mysql_password
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # 应用服务
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: fantasy-app-prod
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "mysql://fantasy_user:fantasy_password@mysql:3306/fantasy_record?connection_limit=10&pool_timeout=20"
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      JWT_EXPIRES_IN: "7d"
+      PORT: 3000
+      NODE_ENV: "production"
+      DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek_api_key
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - fantasy-network
+    secrets:
+      - jwt_secret
+      - deepseek_api_key
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.3'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Nginx 反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: fantasy-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    networks:
+      - fantasy-network
+
+volumes:
+  mysql_data:
+  uploads_data:
+
+networks:
+  fantasy-network:
+    driver: bridge
+
+secrets:
+  mysql_root_password:
+    file: ./secrets/mysql_root_password.txt
+  mysql_password:
+    file: ./secrets/mysql_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  deepseek_api_key:
+    file: ./secrets/deepseek_api_key.txt

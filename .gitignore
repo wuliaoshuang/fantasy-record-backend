@@ -56,3 +56,45 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /generated/prisma
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Secrets and sensitive files
+/secrets/*.txt
+!/secrets/.gitkeep
+
+# SSL certificates
+/ssl/
+*.pem
+*.key
+*.crt
+*.csr
+
+# Database
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.backup
+*.bak
+*.dump
+
+# Production files
+/uploads/*
+!/uploads/.gitkeep
+
+# Logs
+/logs/
+*.log.*
+
+# Cache
+.cache/
+.parcel-cache/
+
+# Runtime
+.pid
+.lock

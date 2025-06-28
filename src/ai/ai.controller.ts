@@ -38,4 +38,22 @@ export class AiController {
   ) {
     return this.aiService.getFeasibilityAnalysis(user.id, dto.recordId);
   }
+
+  @Get('analysis-history')
+  @ApiOperation({ summary: '获取AI分析历史' })
+  @ApiResponse({ status: 200, description: '获取分析历史成功' })
+  getAnalysisHistory(
+    @User() user: any,
+    @Query('limit') limit: string = '10',
+  ) {
+    const limitNum = parseInt(limit, 10) || 10;
+    return this.aiService.getUserAnalysisHistory(user.id, limitNum);
+  }
+
+  @Post('trigger-analysis')
+  @ApiOperation({ summary: '手动触发AI分析' })
+  @ApiResponse({ status: 200, description: 'AI分析触发成功' })
+  triggerAnalysis(@User() user: any) {
+    return this.aiService.triggerManualAnalysis(user.id);
+  }
 }

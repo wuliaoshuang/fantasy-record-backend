@@ -94,15 +94,41 @@ npm install
 
 ### 2. 环境配置
 
-创建 `.env` 文件并配置以下环境变量：
+复制 `.env.example` 文件为 `.env` 并配置以下环境变量：
+
+```bash
+cp .env.example .env
+```
+
+然后编辑 `.env` 文件：
 
 ```env
+# 数据库配置
 DATABASE_URL="mysql://root:password@localhost:3306/fantasy_record_db"
+
+# JWT 配置
 JWT_SECRET="your-super-secret-jwt-key-here"
 JWT_EXPIRES_IN="7d"
+
+# 应用配置
 PORT=3000
 NODE_ENV="development"
+
+# AI 服务配置（必需）
+DEEPSEEK_API_KEY="your-deepseek-api-key-here"
 ```
+
+**重要安全提示：**
+- 🔐 `.env` 文件已在 `.gitignore` 中，不会被提交到版本控制
+- 🔑 请将 `DEEPSEEK_API_KEY` 替换为您的真实 DeepSeek API 密钥
+- 🚫 切勿在代码中硬编码 API 密钥
+- 📝 生产环境请使用更强的 JWT_SECRET
+
+**获取 DeepSeek API 密钥：**
+1. 访问 [DeepSeek 官网](https://platform.deepseek.com/)
+2. 注册账号并登录
+3. 在 API 管理页面创建新的 API 密钥
+4. 将密钥复制到 `.env` 文件中
 
 ### 3. 数据库设置
 
@@ -170,8 +196,17 @@ npm run start:prod
 - `GET /analytics/records-summary` - 获取记录摘要
 
 ### AI 分析
-- `GET /ai/mental-state-analysis` - 心理状态分析
+- `GET /ai/mental-state-analysis` - 心理状态分析（返回情绪图表、词云、最新分析报告）
 - `POST /ai/feasibility-analysis` - 软件创意可行性分析
+- `GET /ai/analysis-history` - 获取AI分析历史记录
+
+**AI 分析功能说明：**
+- 🧠 **心理状态分析**：基于用户记录内容，使用 DeepSeek AI 生成专业的心理状态报告
+- 📊 **情绪趋势图表**：可视化展示用户情绪变化趋势
+- ☁️ **主题词云**：提取记录中的关键词，生成词云图
+- 💡 **创意可行性分析**：针对软件创意记录，提供专业的可行性评估
+- 📝 **Markdown 格式报告**：AI 生成的分析报告采用结构化的 Markdown 格式
+- ⏰ **定时分析**：系统每天自动为活跃用户生成心理状态分析
 
 ## 数据库模型
 
@@ -254,10 +289,80 @@ nest generate service feature-name
 - 遵循 NestJS 官方风格指南
 - 使用 class-validator 进行数据验证
 - 所有 API 都需要适当的错误处理
+- 使用环境变量管理敏感配置
+- 为所有公共 API 添加 Swagger 文档
+
+### 测试
+
+```bash
+# 单元测试
+npm run test
+
+# 端到端测试
+npm run test:e2e
+
+# 测试覆盖率
+npm run test:cov
+```
+
+## 故障排除
+
+### 常见问题
+
+**1. 数据库连接失败**
+```
+Error: P1001: Can't reach database server
+```
+解决方案：
+- 检查 MySQL 服务是否启动
+- 验证 `DATABASE_URL` 配置是否正确
+- 确认数据库用户权限
+
+**2. AI 分析失败**
+```
+Error: DEEPSEEK_API_KEY environment variable is required
+```
+解决方案：
+- 确保 `.env` 文件中配置了正确的 `DEEPSEEK_API_KEY`
+- 验证 API 密钥是否有效
+- 检查网络连接是否正常
+
+**3. 文件上传失败**
+```
+Error: File too large
+```
+解决方案：
+- 检查文件大小是否超过限制（默认 10MB）
+- 确认 `uploads` 目录权限
+- 验证文件类型是否支持
+
+**4. JWT 认证失败**
+```
+Error: Unauthorized
+```
+解决方案：
+- 检查 `JWT_SECRET` 配置
+- 验证 token 是否过期
+- 确认请求头中包含正确的 Authorization
+
+### 调试技巧
+
+```bash
+# 启用详细日志
+NODE_ENV=development npm run start:dev
+
+# 查看数据库状态
+npx prisma studio
+
+# 检查 API 文档
+# 访问 http://localhost:3000/api
+```
 
 ## 部署
 
 ### Docker 部署
+
+#### 方式一：单独部署应用（需要外部 MySQL）
 
 ```bash
 # 构建镜像
@@ -267,14 +372,277 @@ docker build -t fantasy-record-backend .
 docker run -p 3000:3000 --env-file .env fantasy-record-backend
 ```
 
+#### 方式二：使用 Docker Compose（推荐）
+
+创建 `docker-compose.yml` 文件：
+
+```yaml
+version: '3.8'
+
+services:
+  # MySQL 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: fantasy-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: fantasy_record
+      MYSQL_USER: fantasy_user
+      MYSQL_PASSWORD: fantasy_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - fantasy-network
+
+  # 应用服务
+  app:
+    build: .
+    container_name: fantasy-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "mysql://fantasy_user:fantasy_password@mysql:3306/fantasy_record"
+      JWT_SECRET: "your-super-secret-jwt-key"
+      JWT_EXPIRES_IN: "7d"
+      PORT: 3000
+      NODE_ENV: "production"
+      DEEPSEEK_API_KEY: "your-deepseek-api-key"
+    depends_on:
+      - mysql
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - fantasy-network
+
+volumes:
+  mysql_data:
+
+networks:
+  fantasy-network:
+    driver: bridge
+```
+
+启动服务：
+
+```bash
+# 启动所有服务
+docker-compose up -d
+
+# 查看服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f app
+
+# 停止服务
+docker-compose down
+```
+
+#### 数据库初始化和迁移
+
+**首次部署时：**
+
+```bash
+# 进入应用容器
+docker exec -it fantasy-app bash
+
+# 生成 Prisma 客户端
+npx prisma generate
+
+# 运行数据库迁移
+npx prisma migrate deploy
+
+# 或者直接推送 schema（开发环境）
+npx prisma db push
+```
+
+**生产环境数据迁移：**
+
+```bash
+# 创建新的迁移文件
+npx prisma migrate dev --name migration_name
+
+# 部署迁移到生产环境
+npx prisma migrate deploy
+```
+
+#### Dockerfile 优化建议
+
+创建 `Dockerfile`：
+
+```dockerfile
+# 多阶段构建
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# 复制依赖文件
+COPY package*.json ./
+COPY pnpm-lock.yaml ./
+
+# 安装 pnpm 和依赖
+RUN npm install -g pnpm
+RUN pnpm install --frozen-lockfile
+
+# 复制源代码
+COPY . .
+
+# 生成 Prisma 客户端
+RUN npx prisma generate
+
+# 构建应用
+RUN pnpm run build
+
+# 生产阶段
+FROM node:18-alpine AS production
+
+WORKDIR /app
+
+# 安装 pnpm
+RUN npm install -g pnpm
+
+# 复制依赖文件
+COPY package*.json ./
+COPY pnpm-lock.yaml ./
+
+# 只安装生产依赖
+RUN pnpm install --frozen-lockfile --prod
+
+# 复制构建产物和必要文件
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/prisma ./prisma
+
+# 创建上传目录
+RUN mkdir -p uploads
+
+# 暴露端口
+EXPOSE 3000
+
+# 启动应用
+CMD ["node", "dist/main"]
+```
+
 ### 生产环境注意事项
 
-1. 确保数据库连接安全
-2. 使用强密码作为 JWT_SECRET
-3. 配置适当的 CORS 策略
-4. 启用 HTTPS
-5. 设置文件上传大小限制
-6. 配置日志记录
+#### 数据库安全配置
+
+1. **MySQL 安全设置**
+   - 使用强密码（至少 12 位，包含大小写字母、数字、特殊字符）
+   - 禁用 root 远程登录
+   - 创建专用数据库用户，仅授予必要权限
+   - 启用 SSL 连接
+   - 定期备份数据库
+
+2. **Prisma 生产配置**
+   ```bash
+   # 设置连接池
+   DATABASE_URL="mysql://user:password@host:3306/database?connection_limit=10&pool_timeout=20"
+   
+   # 启用查询日志（调试时）
+   DATABASE_URL="mysql://user:password@host:3306/database?sslaccept=strict&logging=true"
+   ```
+
+3. **数据库备份策略**
+   ```bash
+   # 创建备份脚本
+   #!/bin/bash
+   DATE=$(date +"%Y%m%d_%H%M%S")
+   mysqldump -u username -p database_name > backup_$DATE.sql
+   
+   # 设置定时备份（crontab）
+   0 2 * * * /path/to/backup_script.sh
+   ```
+
+#### 应用安全配置
+
+1. **环境变量安全**
+   - 使用强密码作为 JWT_SECRET（至少 32 位随机字符）
+   - 妥善保管 DEEPSEEK_API_KEY
+   - 不要在代码中硬编码敏感信息
+
+2. **网络安全**
+   - 配置适当的 CORS 策略
+   - 启用 HTTPS
+   - 使用防火墙限制数据库端口访问
+   - 配置反向代理（如 Nginx）
+
+3. **文件和资源限制**
+   - 设置文件上传大小限制
+   - 配置请求频率限制
+   - 启用文件类型验证
+
+4. **监控和日志**
+   - 配置应用日志记录
+   - 监控数据库性能
+   - 设置错误告警
+   - 定期检查安全日志
+
+#### Docker 生产部署建议
+
+1. **容器安全**
+   ```yaml
+   # docker-compose.prod.yml
+   services:
+     mysql:
+       # 使用非 root 用户
+       user: "1001:1001"
+       # 限制容器权限
+       cap_drop:
+         - ALL
+       cap_add:
+         - CHOWN
+         - DAC_OVERRIDE
+         - SETGID
+         - SETUID
+     
+     app:
+       # 只读根文件系统
+       read_only: true
+       # 临时文件系统
+       tmpfs:
+         - /tmp
+         - /app/uploads
+   ```
+
+2. **资源限制**
+   ```yaml
+   services:
+     mysql:
+       deploy:
+         resources:
+           limits:
+             memory: 1G
+             cpus: '0.5'
+     app:
+       deploy:
+         resources:
+           limits:
+             memory: 512M
+             cpus: '0.3'
+   ```
+
+3. **健康检查**
+   ```yaml
+   services:
+     mysql:
+       healthcheck:
+         test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+         timeout: 20s
+         retries: 10
+     
+     app:
+       healthcheck:
+         test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+         interval: 30s
+         timeout: 10s
+         retries: 3
+   ```
 
 ## 版本更新日志
 

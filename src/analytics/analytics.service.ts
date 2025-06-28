@@ -218,27 +218,42 @@ export class AnalyticsService {
       moodText = '今天心情很不好，建议寻求帮助。';
     }
 
-    // 创建或更新心情分析记录
-    const analysis = await this.prisma.moodAnalysis.upsert({
+    // 查找是否已存在当天的分析记录
+    const existingAnalysis = await this.prisma.moodAnalysis.findFirst({
       where: {
-        userId_date: {
-          userId,
-          date: startOfDay,
+        userId,
+        analysisDate: {
+          gte: startOfDay,
+          lt: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000),
         },
       },
-      update: {
-        moodScore: averageMood,
-        moodText,
-        recordCount: records.length,
-      },
-      create: {
-        userId,
-        date: startOfDay,
-        moodScore: averageMood,
-        moodText,
-        recordCount: records.length,
-      },
     });
+
+    let analysis;
+    if (existingAnalysis) {
+      // 更新现有记录
+      analysis = await this.prisma.moodAnalysis.update({
+        where: { id: existingAnalysis.id },
+        data: {
+          emotionScore: averageMood,
+          analysisText: moodText,
+          recordCount: records.length,
+          creativityScore: 50, // 默认创意分数
+        },
+      });
+    } else {
+      // 创建新记录
+      analysis = await this.prisma.moodAnalysis.create({
+        data: {
+          userId,
+          analysisDate: startOfDay,
+          emotionScore: averageMood,
+          analysisText: moodText,
+          recordCount: records.length,
+          creativityScore: 50, // 默认创意分数
+        },
+      });
+    }
 
     return analysis;
   }
@@ -250,7 +265,7 @@ export class AnalyticsService {
     return this.prisma.moodAnalysis.findFirst({
       where: {
         userId,
-        date: startOfDay,
+        analysisDate: startOfDay,
       },
     });
   }

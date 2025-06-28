@@ -76,6 +76,21 @@ export class RecordsController {
     return this.recordsService.getRecordsByDateRange(user.id, start, end);
   }
 
+  @Get('search/tags')
+  @ApiOperation({ summary: '根据标签搜索记录' })
+  @ApiResponse({ status: 200, description: '搜索记录成功' })
+  searchByTags(
+    @Query('tags') tags: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+    @User() user: any,
+  ) {
+    const tagArray = tags ? tags.split(',').map(tag => tag.trim()) : [];
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 20;
+    return this.recordsService.searchByTags(user.id, tagArray, pageNum, limitNum);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: '获取单个记录' })
   @ApiResponse({ status: 200, description: '获取记录成功' })

@@ -19,10 +19,11 @@ model User {
   createdAt DateTime @default(now())
   
   // Relations
-  records     FantasyRecord[]
-  tags        Tag[]
-  attachments Attachment[]
-  categories  Category[]
+  records       FantasyRecord[]
+  tags          Tag[]
+  attachments   Attachment[]
+  categories    Category[]
+  moodAnalyses  MoodAnalysis[]
   
   @@map("users")
 }
@@ -98,15 +99,18 @@ model Category {
 }
 
 model MoodAnalysis {
-  id          String   @id @default(uuid())
-  userId      String
-  date        DateTime @db.Date
-  moodScore   Float    // 心情分数 1-10
-  moodText    String   @db.VarChar(500) // 心情文本描述
-  recordCount Int      @default(0) // 当天记录数量
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(uuid())
+  userId         String
+  analysisText   String   @db.Text // AI分析文本
+  emotionScore   Float    // 情绪分数 1-10
+  creativityScore Int     // 创意分数 0-100
+  recordCount    Int      @default(0) // 分析的记录数量
+  analysisDate   DateTime // 分析日期
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
   
-  @@unique([userId, date]) // 每个用户每天只有一条分析记录
+  // Relations
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
   @@map("mood_analyses")
 }

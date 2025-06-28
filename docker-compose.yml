@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # MySQL 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: fantasy-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: fantasy_record
+      MYSQL_USER: fantasy_user
+      MYSQL_PASSWORD: fantasy_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - fantasy-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # 应用服务
+  app:
+    build: .
+    container_name: fantasy-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "mysql://fantasy_user:fantasy_password@mysql:3306/fantasy_record"
+      JWT_SECRET: "your-super-secret-jwt-key-change-this-in-production"
+      JWT_EXPIRES_IN: "7d"
+      PORT: 3000
+      NODE_ENV: "production"
+      DEEPSEEK_API_KEY: "your-deepseek-api-key"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - fantasy-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  mysql_data:
+
+networks:
+  fantasy-network:
+    driver: bridge

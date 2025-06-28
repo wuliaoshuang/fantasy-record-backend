@@ -1,9 +1,27 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RecordsService } from '../records/records.service';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import OpenAI from 'openai';
 
 @Injectable()
 export class AiService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(AiService.name);
+  private readonly openai: OpenAI;
+
+  constructor(
+    private prisma: PrismaService,
+    private recordsService: RecordsService,
+  ) {
+    if (!process.env.DEEPSEEK_API_KEY) {
+      throw new Error('DEEPSEEK_API_KEY environment variable is required');
+    }
+    
+    this.openai = new OpenAI({
+      baseURL: 'https://api.deepseek.com',
+      apiKey: process.env.DEEPSEEK_API_KEY,
+    });
+  }
 
   private getMoodScore(mood: string): number {
     const moodScores: { [key: string]: number } = {
@@ -154,13 +172,25 @@ export class AiService {
     // Generate theme word cloud
     const themeWordCloud = this.generateWordCloud(records);
 
-    // Generate summary report
-    const summaryReport = this.generateSummaryReport(records, period);
+    // Get latest mood analysis from database
+    const latestMoodAnalysis = await this.prisma.moodAnalysis.findFirst({
+      where: { userId },
+      orderBy: { analysisDate: 'desc' },
+      select: {
+        id: true,
+        analysisText: true,
+        emotionScore: true,
+        creativityScore: true,
+        recordCount: true,
+        analysisDate: true,
+        createdAt: true,
+      },
+    });
 
     return {
       emotionChartData,
       themeWordCloud,
-      summaryReport,
+      summaryReport: latestMoodAnalysis?.analysisText,
     };
   }
 
@@ -285,5 +315,237 @@ export class AiService {
       technicalChallenges,
       suggestedNextStep,
     };
+  }
+
+  // 定时任务：每12小时执行一次AI分析
+  @Cron('0 */12 * * *')
+  async handleScheduledAnalysis() {
+    this.logger.log('开始执行定时AI分析任务');
+    
+    try {
+      // 获取所有用户
+      const users = await this.prisma.user.findMany({
+        select: { id: true, username: true }
+      });
+
+      for (const user of users) {
+        await this.performUserAnalysis(user.id);
+      }
+
+      this.logger.log('定时AI分析任务完成');
+    } catch (error) {
+      this.logger.error('定时AI分析任务失败:', error);
+    }
+  }
+
+  // 为单个用户执行AI分析
+  private async performUserAnalysis(userId: string) {
+    try {
+      // 获取用户最近7天的记录
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 7);
+
+      const records = await this.prisma.fantasyRecord.findMany({
+        where: {
+          userId,
+          createdAt: { gte: startDate }
+        },
+        select: {
+          id: true,
+          title: true,
+          content: true,
+          mood: true,
+          tags: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10 // 最多分析最近10条记录
+      });
+
+      if (records.length === 0) {
+        this.logger.log(`用户 ${userId} 最近7天无记录，跳过分析`);
+        return;
+      }
+
+      // 使用DeepSeek进行AI分析
+      const analysis = await this.generateDeepSeekAnalysis(records);
+      
+      // 保存分析结果到数据库
+      await this.saveMoodAnalysis(userId, analysis);
+      
+      this.logger.log(`用户 ${userId} 的AI分析完成`);
+    } catch (error) {
+      this.logger.error(`用户 ${userId} 的AI分析失败:`, error);
+    }
+  }
+
+  // 使用DeepSeek API进行真正的AI分析
+  private async generateDeepSeekAnalysis(records: any[]) {
+    const recordsText = records.map(record => {
+      const tags = this.parseJsonField(record.tags);
+      return `标题: ${record.title}\n内容: ${record.content}\n情绪: ${record.mood}\n标签: ${Array.isArray(tags) ? tags.join(', ') : '无'}\n时间: ${record.createdAt.toISOString().split('T')[0]}`;
+    }).join('\n\n---\n\n');
+
+    const prompt = `请分析以下用户的幻想记录，提供专业的心理状态和创意分析：
+
+${recordsText}
+
+请从以下几个维度进行分析：
+1. 情绪趋势分析（积极/消极情绪的变化趋势）
+2. 创意质量评估（创意的新颖性和可行性）
+3. 心理健康状态（基于记录内容判断用户的心理状态）
+4. 建议和改进方向（如何提升创意质量和心理健康）
+
+请用中文回答，保持专业和温暖的语调。`;
+
+    try {
+      const completion = await this.openai.chat.completions.create({
+        messages: [
+          { 
+            role: "system", 
+            content: "你是一位专业的心理分析师和创意顾问，擅长分析用户的情绪状态和创意内容，提供有价值的建议。" 
+          },
+          { role: "user", content: prompt }
+        ],
+        model: "deepseek-chat",
+        temperature: 0.7,
+        max_tokens: 1000
+      });
+
+      const analysisText = completion.choices[0].message.content || '分析生成失败';
+      
+      return {
+        analysisText,
+        emotionScore: this.calculateAverageEmotion(records),
+        creativityScore: this.calculateCreativityScore(records),
+        recordCount: records.length,
+        analysisDate: new Date()
+      };
+    } catch (error) {
+      this.logger.error('DeepSeek API调用失败:', error);
+      // 如果API调用失败，返回基础分析
+      return this.generateBasicAnalysis(records);
+    }
+  }
+
+  // 计算平均情绪分数
+  private calculateAverageEmotion(records: any[]): number {
+    if (records.length === 0) return 5;
+    const total = records.reduce((sum, record) => sum + this.getMoodScore(record.mood), 0);
+    return Math.round((total / records.length) * 10) / 10;
+  }
+
+  // 计算创意分数
+  private calculateCreativityScore(records: any[]): number {
+    let score = 50; // 基础分数
+    
+    records.forEach(record => {
+      const content = record.content.toLowerCase();
+      const title = record.title.toLowerCase();
+      
+      // 检查创新关键词
+      if (content.includes('创新') || content.includes('新颖') || title.includes('创意')) {
+        score += 10;
+      }
+      
+      // 检查技术相关内容
+      if (content.includes('技术') || content.includes('算法') || content.includes('ai')) {
+        score += 8;
+      }
+      
+      // 检查详细程度
+      if (content.length > 200) {
+        score += 5;
+      }
+      
+      // 检查标签多样性
+      const tags = this.parseJsonField(record.tags);
+      if (Array.isArray(tags) && tags.length > 2) {
+        score += 3;
+      }
+    });
+    
+    return Math.min(Math.max(score, 0), 100);
+  }
+
+  // 生成基础分析（当API调用失败时使用）
+  private generateBasicAnalysis(records: any[]) {
+    const avgEmotion = this.calculateAverageEmotion(records);
+    const creativityScore = this.calculateCreativityScore(records);
+    
+    let analysisText = `基于您最近${records.length}条记录的分析：\n\n`;
+    analysisText += `情绪状态：您的平均情绪评分为${avgEmotion}分，`;
+    
+    if (avgEmotion >= 7) {
+      analysisText += '整体情绪状态积极向上，保持这种良好的心态！\n\n';
+    } else if (avgEmotion >= 5) {
+      analysisText += '情绪状态相对平稳，可以尝试更多激发灵感的活动。\n\n';
+    } else {
+      analysisText += '建议关注情绪健康，适当调节心情。\n\n';
+    }
+    
+    analysisText += `创意质量：您的创意评分为${creativityScore}分，`;
+    
+    if (creativityScore >= 80) {
+      analysisText += '创意质量很高，继续保持这种创造性思维！';
+    } else if (creativityScore >= 60) {
+      analysisText += '创意有一定质量，可以尝试更深入的思考和探索。';
+    } else {
+      analysisText += '建议多观察生活，寻找更多灵感来源。';
+    }
+    
+    return {
+      analysisText,
+      emotionScore: avgEmotion,
+      creativityScore,
+      recordCount: records.length,
+      analysisDate: new Date()
+    };
+  }
+
+  // 保存情绪分析结果到数据库
+  private async saveMoodAnalysis(userId: string, analysis: any) {
+    try {
+      await this.prisma.moodAnalysis.create({
+        data: {
+          userId,
+          analysisText: analysis.analysisText,
+          emotionScore: analysis.emotionScore,
+          creativityScore: analysis.creativityScore,
+          recordCount: analysis.recordCount,
+          analysisDate: analysis.analysisDate
+        }
+      });
+    } catch (error) {
+      this.logger.error('保存分析结果失败:', error);
+    }
+  }
+
+  // 解析JSON字段的辅助方法
+  private parseJsonField(field: any): any {
+    if (typeof field === 'string') {
+      try {
+        return JSON.parse(field);
+      } catch (e) {
+        return field;
+      }
+    }
+    return field;
+  }
+
+  // 获取用户的AI分析历史
+  async getUserAnalysisHistory(userId: string, limit: number = 10) {
+    return this.prisma.moodAnalysis.findMany({
+      where: { userId },
+      orderBy: { analysisDate: 'desc' },
+      take: limit
+    });
+  }
+
+  // 手动触发AI分析
+  async triggerManualAnalysis(userId: string) {
+    this.logger.log(`手动触发用户 ${userId} 的AI分析`);
+    await this.performUserAnalysis(userId);
+    return { message: 'AI分析已完成' };
   }
 }

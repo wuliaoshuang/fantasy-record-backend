@@ -14,6 +14,25 @@ export class RecordsService {
     return plainText.length > 117 ? plainText.substring(0, 117) + '...' : plainText;
   }
 
+  private parseJsonField(field: any): any {
+    if (typeof field === 'string') {
+      try {
+        return JSON.parse(field);
+      } catch (e) {
+        return field;
+      }
+    }
+    return field;
+  }
+
+  private formatRecord(record: any): any {
+    return {
+      ...record,
+      tags: this.parseJsonField(record.tags),
+      attachments: this.parseJsonField(record.attachments),
+    };
+  }
+
   async create(createRecordDto: CreateRecordDto, userId: string) {
     const snippet = this.generateSnippet(createRecordDto.content);
     
@@ -47,7 +66,7 @@ export class RecordsService {
       },
     });
 
-    return record;
+    return this.formatRecord(record);
   }
 
   async findAll(queryDto: QueryRecordsDto, userId: string) {
@@ -111,7 +130,7 @@ export class RecordsService {
     const totalPages = Math.ceil(totalRecords / limit);
 
     return {
-      records,
+      records: records.map(record => this.formatRecord(record)),
       pagination: {
         totalRecords,
         currentPage: page,
@@ -150,7 +169,7 @@ export class RecordsService {
       throw new ForbiddenException('Access denied');
     }
 
-    return record;
+    return this.formatRecord(record);
   }
 
   async update(id: string, updateRecordDto: UpdateRecordDto, userId: string) {
@@ -192,7 +211,7 @@ export class RecordsService {
       },
     });
 
-    return record;
+    return this.formatRecord(record);
   }
 
   async remove(id: string, userId: string) {
@@ -250,7 +269,7 @@ export class RecordsService {
   }
 
   async getRecordsByDateRange(userId: string, startDate: Date, endDate: Date) {
-    return this.prisma.fantasyRecord.findMany({
+    const records = await this.prisma.fantasyRecord.findMany({
       where: {
         userId,
         createdAt: {
@@ -270,11 +289,69 @@ export class RecordsService {
         createdAt: 'desc',
       },
     });
+
+    return records.map(record => this.formatRecord(record));
   }
 
   async getRecordsCount(userId: string) {
     return this.prisma.fantasyRecord.count({
       where: { userId },
     });
+  }
+
+  async searchByTags(userId: string, tags: string[], page: number = 1, limit: number = 20) {
+    const skip = (page - 1) * limit;
+
+    // Get all records for the user
+    const allRecords = await this.prisma.fantasyRecord.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        title: true,
+        snippet: true,
+        tags: true,
+        mood: true,
+        createdAt: true,
+        updatedAt: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
+      },
+    });
+
+    // Filter records that contain any of the specified tags
+    const filteredRecords = allRecords.filter(record => {
+      const recordTags = this.parseJsonField(record.tags);
+      if (!Array.isArray(recordTags)) return false;
+      
+      return tags.some(searchTag => 
+        recordTags.some(recordTag => 
+          recordTag.toLowerCase().includes(searchTag.toLowerCase())
+        )
+      );
+    });
+
+    // Apply pagination
+    const totalRecords = filteredRecords.length;
+    const paginatedRecords = filteredRecords
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(skip, skip + limit);
+
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    return {
+      records: paginatedRecords.map(record => this.formatRecord(record)),
+      pagination: {
+        totalRecords,
+        currentPage: page,
+        totalPages,
+        searchTags: tags,
+      },
+    };
   }
 }
