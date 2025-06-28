@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { RecordsModule } from './records/records.module';
 import { TagsModule } from './tags/tags.module';
+import { CategoriesModule } from './categories/categories.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AiModule } from './ai/ai.module';
@@ -22,6 +23,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     AuthModule,
     RecordsModule,
     TagsModule,
+    CategoriesModule,
     AttachmentsModule,
     AnalyticsModule,
     AiModule,

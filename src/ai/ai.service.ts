@@ -40,11 +40,16 @@ export class AiService {
       });
       
       // Also count tags
-      if (Array.isArray(record.tags)) {
-        record.tags.forEach((tag: string) => {
-          wordCount[tag] = (wordCount[tag] || 0) + 3; // Give tags higher weight
-        });
-      }
+        try {
+          const tags = JSON.parse(record.tags as string);
+          if (Array.isArray(tags)) {
+            tags.forEach((tag: string) => {
+              wordCount[tag] = (wordCount[tag] || 0) + 3; // Give tags higher weight
+            });
+          }
+        } catch (e) {
+          // Handle parsing error
+        }
     });
 
     // Convert to array and sort by frequency
@@ -64,8 +69,22 @@ export class AiService {
     const avgMood = records.reduce((sum, record) => sum + this.getMoodScore(record.mood), 0) / totalRecords;
     
     // Count different types of records
-    const softwareIdeas = records.filter(r => Array.isArray(r.tags) && r.tags.includes('软件灵感')).length;
-    const storyFragments = records.filter(r => Array.isArray(r.tags) && r.tags.includes('故事片段')).length;
+    const softwareIdeas = records.filter(r => {
+        try {
+          const tags = JSON.parse(r.tags as string);
+          return Array.isArray(tags) && tags.includes('软件灵感');
+        } catch (e) {
+          return false;
+        }
+      }).length;
+      const storyFragments = records.filter(r => {
+        try {
+          const tags = JSON.parse(r.tags as string);
+          return Array.isArray(tags) && tags.includes('故事片段');
+        } catch (e) {
+          return false;
+        }
+      }).length;
     
     // Most common mood
     const moodCount: { [key: string]: number } = {};
@@ -168,7 +187,13 @@ export class AiService {
     }
 
     // Check if record has '软件灵感' tag
-    if (!Array.isArray(record.tags) || !record.tags.includes('软件灵感')) {
+    let tags: string[] = [];
+    try {
+      tags = JSON.parse(record.tags as string);
+    } catch (e) {
+      // Handle parsing error
+    }
+    if (!Array.isArray(tags) || !tags.includes('软件灵感')) {
       throw new BadRequestException('Record must have "软件灵感" tag for feasibility analysis');
     }
 

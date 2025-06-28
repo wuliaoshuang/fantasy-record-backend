@@ -9,9 +9,9 @@ export class RecordsService {
   constructor(private prisma: PrismaService) {}
 
   private generateSnippet(content: string): string {
-    // Remove HTML tags and get first 120 characters
+    // Remove HTML tags and get first 117 characters (leaving room for '...')
     const plainText = content.replace(/<[^>]*>/g, '');
-    return plainText.length > 120 ? plainText.substring(0, 120) + '...' : plainText;
+    return plainText.length > 117 ? plainText.substring(0, 117) + '...' : plainText;
   }
 
   async create(createRecordDto: CreateRecordDto, userId: string) {
@@ -24,6 +24,7 @@ export class RecordsService {
         mood: createRecordDto.mood,
         snippet,
         userId,
+        categoryId: createRecordDto.categoryId,
         tags: JSON.stringify(createRecordDto.tags),
         attachments: JSON.stringify(createRecordDto.attachments || []),
       },
@@ -35,6 +36,14 @@ export class RecordsService {
             email: true,
           },
         },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
       },
     });
 
@@ -42,7 +51,7 @@ export class RecordsService {
   }
 
   async findAll(queryDto: QueryRecordsDto, userId: string) {
-    const { q, tag, limit, page, sortBy, order } = queryDto;
+    const { q, tag, categoryId, limit, page, sortBy, order } = queryDto;
     const skip = (page - 1) * limit;
 
     // Build where clause
@@ -57,11 +66,17 @@ export class RecordsService {
       ];
     }
 
-    if (tag) {
-      where.tags = {
-        array_contains: tag,
-      };
+    if (categoryId) {
+      where.categoryId = categoryId;
     }
+
+    // TODO: Fix JSON field query for tags
+    // if (tag) {
+    //   where.tags = {
+    //     path: '$[*]',
+    //     string_contains: tag,
+    //   };
+    // }
 
     // Get total count
     const totalRecords = await this.prisma.fantasyRecord.count({ where });
@@ -77,6 +92,14 @@ export class RecordsService {
         mood: true,
         createdAt: true,
         updatedAt: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
       },
       orderBy: {
         [sortBy]: order,
@@ -108,6 +131,14 @@ export class RecordsService {
             email: true,
           },
         },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
       },
     });
 
@@ -135,6 +166,7 @@ export class RecordsService {
       updateData.snippet = this.generateSnippet(updateRecordDto.content);
     }
     if (updateRecordDto.mood !== undefined) updateData.mood = updateRecordDto.mood;
+    if (updateRecordDto.categoryId !== undefined) updateData.categoryId = updateRecordDto.categoryId;
     if (updateRecordDto.tags !== undefined) updateData.tags = JSON.stringify(updateRecordDto.tags);
     if (updateRecordDto.attachments !== undefined) updateData.attachments = JSON.stringify(updateRecordDto.attachments);
 
@@ -147,6 +179,14 @@ export class RecordsService {
             id: true,
             username: true,
             email: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
           },
         },
       },
@@ -172,11 +212,69 @@ export class RecordsService {
 
     const allTags = new Set<string>();
     records.forEach((record) => {
-      if (Array.isArray(record.tags)) {
-        record.tags.forEach((tag: string) => allTags.add(tag));
-      }
+      if (record.tags) {
+          try {
+            const tags = JSON.parse(record.tags as string);
+            if (Array.isArray(tags)) {
+              tags.forEach((tag: string) => allTags.add(tag));
+            }
+          } catch (e) {
+            // Handle legacy string tags
+            if (typeof record.tags === 'string') {
+              allTags.add(record.tags);
+            }
+          }
+        }
     });
 
     return Array.from(allTags);
+  }
+
+  async getRecordsByMood(userId: string, mood: string) {
+    return this.prisma.fantasyRecord.findMany({
+      where: {
+        userId,
+        mood,
+      },
+      select: {
+        id: true,
+        title: true,
+        snippet: true,
+        mood: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
+  async getRecordsByDateRange(userId: string, startDate: Date, endDate: Date) {
+    return this.prisma.fantasyRecord.findMany({
+      where: {
+        userId,
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+        snippet: true,
+        mood: true,
+        tags: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
+  async getRecordsCount(userId: string) {
+    return this.prisma.fantasyRecord.count({
+      where: { userId },
+    });
   }
 }

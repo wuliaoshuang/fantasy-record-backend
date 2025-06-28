@@ -11,6 +11,10 @@ export class QueryRecordsDto {
   tag?: string;
 
   @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(1)

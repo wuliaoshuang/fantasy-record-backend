@@ -29,6 +29,10 @@ export class CreateRecordDto {
   mood: string;
 
   @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @IsOptional()
   @IsArray()
   attachments?: AttachmentDto[];
 }

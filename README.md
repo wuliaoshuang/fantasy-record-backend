@@ -11,13 +11,21 @@
 
 ### 📝 幻想记录管理
 - 创建、查看、更新、删除记录
-- 支持标题、内容、标签、情绪状态
-- 关键词搜索和标签过滤
+- 支持标题、内容、标签、情绪状态、分类
+- 关键词搜索、标签过滤、分类筛选
 - 分页和排序功能
+- 自动生成记录摘要
+
+### 🗂️ 分类系统
+- 创建、查看、更新、删除分类
+- 支持分类名称、描述、颜色、图标
+- 分类记录数量统计
+- 按分类筛选记录
 
 ### 🏷️ 标签系统
 - 获取所有可用标签
 - 标签统计和管理
+- 支持标签颜色设置
 
 ### 📎 文件附件
 - 文件上传功能
@@ -34,6 +42,14 @@
 - 情绪波动图表
 - 主题词云生成
 - 软件创意可行性分析
+- 自动记录摘要生成
+
+### 🔍 高级搜索与筛选
+- 多维度搜索（标题、内容、标签）
+- 按分类筛选记录
+- 按情绪状态筛选
+- 时间范围筛选
+- 分页和多种排序方式
 
 ## 技术栈
 
@@ -54,7 +70,11 @@ src/
 │   ├── strategies/      # 认证策略
 │   └── decorators/      # 自定义装饰器
 ├── records/             # 记录管理模块
+│   └── dto/             # 记录相关DTO
+├── categories/          # 分类管理模块
+│   └── dto/             # 分类相关DTO
 ├── tags/                # 标签模块
+│   └── dto/             # 标签相关DTO
 ├── attachments/         # 附件模块
 ├── analytics/           # 数据分析模块
 ├── ai/                  # AI 分析模块
@@ -90,11 +110,20 @@ NODE_ENV="development"
 # 生成 Prisma 客户端
 npx prisma generate
 
-# 运行数据库迁移
+# 运行数据库迁移（开发环境）
+npx prisma migrate dev
+
+# 或者直接推送 schema 变更（快速原型）
 npx prisma db push
 
 # (可选) 查看数据库
 npx prisma studio
+```
+
+**注意**: 如果遇到数据库 schema 冲突，可能需要重置数据库：
+```bash
+# 重置数据库（会清空所有数据）
+npx prisma migrate reset --force
 ```
 
 ### 4. 启动应用
@@ -117,11 +146,18 @@ npm run start:prod
 - `POST /auth/login` - 用户登录
 
 ### 记录管理
-- `GET /records` - 获取记录列表（支持搜索、过滤、分页）
+- `GET /records` - 获取记录列表（支持搜索、过滤、分页、分类筛选）
 - `POST /records` - 创建新记录
 - `GET /records/:id` - 获取单个记录
 - `PUT /records/:id` - 更新记录
 - `DELETE /records/:id` - 删除记录
+
+### 分类管理
+- `GET /categories` - 获取所有分类（包含记录数量统计）
+- `POST /categories` - 创建新分类
+- `GET /categories/:id` - 获取单个分类
+- `PATCH /categories/:id` - 更新分类
+- `DELETE /categories/:id` - 删除分类
 
 ### 标签管理
 - `GET /tags` - 获取所有标签
@@ -151,10 +187,49 @@ npm run start:prod
 - id: 记录ID
 - title: 标题
 - content: 内容
+- snippet: 记录摘要（自动生成）
 - tags: 标签数组
 - mood: 情绪状态
 - attachments: 附件数组
 - userId: 用户ID
+- categoryId: 分类ID（可选）
+- createdAt: 创建时间
+- updatedAt: 更新时间
+
+### Category (分类)
+- id: 分类ID
+- name: 分类名称
+- description: 分类描述（可选）
+- color: 分类颜色（可选）
+- icon: 分类图标（可选）
+- userId: 用户ID
+- createdAt: 创建时间
+- updatedAt: 更新时间
+
+### Tag (标签)
+- id: 标签ID
+- name: 标签名称
+- color: 标签颜色（可选）
+- userId: 用户ID
+- createdAt: 创建时间
+
+### Attachment (附件)
+- id: 附件ID
+- url: 文件访问URL
+- fileName: 原始文件名
+- fileType: MIME类型
+- fileSize: 文件大小（字节）
+- userId: 用户ID
+- recordId: 关联记录ID（可选）
+- createdAt: 创建时间
+
+### MoodAnalysis (情绪分析)
+- id: 分析ID
+- userId: 用户ID
+- date: 分析日期
+- moodScore: 心情分数（1-10）
+- moodText: 心情文本描述
+- recordCount: 当天记录数量
 - createdAt: 创建时间
 - updatedAt: 更新时间
 
@@ -200,6 +275,26 @@ docker run -p 3000:3000 --env-file .env fantasy-record-backend
 4. 启用 HTTPS
 5. 设置文件上传大小限制
 6. 配置日志记录
+
+## 版本更新日志
+
+### v2.0.0 (最新)
+- ✨ 新增分类系统，支持记录分类管理
+- ✨ 增强标签系统，支持标签颜色设置
+- ✨ 自动生成记录摘要功能
+- ✨ 新增情绪分析数据模型
+- 🔧 优化数据库结构，增加外键关联
+- 🔧 完善API接口，支持分类筛选
+- 📚 更新API文档和数据模型说明
+
+### v1.0.0
+- 🎉 基础功能实现
+- 🔐 用户认证系统
+- 📝 幻想记录CRUD操作
+- 🏷️ 标签管理
+- 📎 文件附件上传
+- 📊 数据分析功能
+- 🤖 AI智能分析
 
 ## 许可证
 

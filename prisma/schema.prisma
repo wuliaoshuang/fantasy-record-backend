@@ -22,6 +22,7 @@ model User {
   records     FantasyRecord[]
   tags        Tag[]
   attachments Attachment[]
+  categories  Category[]
   
   @@map("users")
 }
@@ -35,11 +36,13 @@ model FantasyRecord {
   mood        String
   attachments Json     @default("[]")
   userId      String
+  categoryId  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
   // Relations
   user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category        Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   attachmentFiles Attachment[]
   
   @@map("fantasy_records")
@@ -74,6 +77,24 @@ model Attachment {
   record   FantasyRecord? @relation(fields: [recordId], references: [id], onDelete: SetNull)
   
   @@map("attachments")
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @db.VarChar(50) // 分类名称
+  description String?  @db.VarChar(200) // 分类描述
+  color       String?  @db.VarChar(20) // 分类颜色
+  icon        String?  @db.VarChar(50) // 分类图标
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  records     FantasyRecord[]
+  
+  @@unique([name, userId]) // 同一用户下分类名唯一
+  @@map("categories")
 }
 
 model MoodAnalysis {
