@@ -386,17 +386,27 @@ export class AiService {
       return `标题: ${record.title}\n内容: ${record.content}\n情绪: ${record.mood}\n标签: ${Array.isArray(tags) ? tags.join(', ') : '无'}\n时间: ${record.createdAt.toISOString().split('T')[0]}`;
     }).join('\n\n---\n\n');
 
-    const prompt = `请分析以下用户的幻想记录，提供专业的心理状态和创意分析：
+    const prompt = `请分析以下用户的幻想记录，提供专业的心理状态和创意分析，请使用Markdown格式输出：
+    ${recordsText}
+请从以下几个维度进行分析，并使用Markdown格式组织内容：
 
-${recordsText}
+## 📊 综合心理状态报告
 
-请从以下几个维度进行分析：
-1. 情绪趋势分析（积极/消极情绪的变化趋势）
-2. 创意质量评估（创意的新颖性和可行性）
-3. 心理健康状态（基于记录内容判断用户的心理状态）
-4. 建议和改进方向（如何提升创意质量和心理健康）
+### 1. 情绪趋势分析
+（分析积极/消极情绪的变化趋势，使用图表描述或数据说明）
 
-请用中文回答，保持专业和温暖的语调。`;
+### 2. 创意质量评估
+（评估创意的新颖性和可行性，可以使用评分或等级）
+
+### 3. 心理健康状态
+（基于记录内容判断用户的心理状态，提供专业见解）
+
+### 4. 建议和改进方向
+（如何提升创意质量和心理健康的具体建议）
+
+### 5. 总结与展望
+（对用户当前状态的总结和未来发展建议）
+请用中文回答，保持专业和温暖的语调，确保输出为标准的Markdown格式。`;
 
     try {
       const completion = await this.openai.chat.completions.create({
